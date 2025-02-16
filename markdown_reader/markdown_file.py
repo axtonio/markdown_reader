@@ -59,9 +59,9 @@ class MarkdownSection:
         self,
         name: str,
         content: str = "",
-        replace_if_exist: bool = False,
-        remove_subsections: bool = False,
-    ) -> None:
+        if_exist: Literal["replace", "error", "change_content"] = "change_content",
+        remove_subsections: bool = True,
+    ) -> MarkdownSection:
 
         lines: list[str] = []
 
@@ -77,23 +77,31 @@ class MarkdownSection:
                     lines.append(line)
             content = "\n".join(lines)
 
-        assert name not in self.file.all_sections.keys() or replace_if_exist
+        if name in self.children.keys() and if_exist == "change_content":
+            section = self.children[name]
+            section.content = content
 
-        if name not in self.file.all_sections.keys():
-            assert name.lower() not in map(
-                lambda x: x.lower(), self.file.all_sections.keys()
+        else:
+
+            assert name not in self.file.all_sections.keys() or if_exist == "replace"
+
+            if name not in self.file.all_sections.keys():
+                assert name.lower() not in map(
+                    lambda x: x.lower(), self.file.all_sections.keys()
+                )
+
+            section = MarkdownSection(
+                name=name, level=self.level + 1, file=self.file, content=content
             )
 
-        section = MarkdownSection(
-            name=name, level=self.level + 1, file=self.file, content=content
-        )
-
-        section.parent = self
+            section.parent = self
 
         self.children.pop(name, None)
-        self.children[name] = section
+        # * important, because check all_section in process section
+        self.file.all_sections[name] = self.children[name] = section
 
         self.file.update()
+        return section
 
 
 class MarkdownFile:
@@ -101,7 +109,6 @@ class MarkdownFile:
     frontmatter: Post
     header: MarkdownSection
     all_sections: dict[str, MarkdownSection] = {}
-    current_section: MarkdownSection
 
     def __init__(
         self,
@@ -142,7 +149,10 @@ class MarkdownFile:
 
     @overload
     def get_template(
-        self, template: Literal["llm"], *, replace_if_exist: Literal[True]
+        self,
+        template: Literal["llm"],
+        *,
+        if_exist: Literal["replace", "error"] = "error",
     ) -> None:
         pass
 
@@ -154,7 +164,7 @@ class MarkdownFile:
         self,
         template: Literal["llm"],
         *,
-        replace_if_exist: bool = False,
+        if_exist: Literal["replace", "error"] = "error",
         clear: bool = False,
     ) -> None:
 
@@ -170,21 +180,20 @@ class MarkdownFile:
                     self.header.add_section(
                         "System Prompt",
                         content="Отвечай в формате Markdown",
-                        replace_if_exist=replace_if_exist,
+                        if_exist=if_exist,
                     )
                 except:
                     pass
 
                 try:
-                    self.header.add_section(
-                        "History", replace_if_exist=replace_if_exist
-                    )
+                    self.header.add_section("History", if_exist=if_exist)
                 except:
                     pass
 
                 self.save()
 
-    def level_and_name(self, row: str) -> tuple[int, str]:
+    @staticmethod
+    def level_and_name(row: str) -> tuple[int, str]:
         row.strip()
         level = 0
         name = ""
@@ -197,70 +206,72 @@ class MarkdownFile:
 
         return level, name
 
-    def process_section(self, section_row: str) -> None:
-
-        level, name = self.level_and_name(section_row)
-
-        new_section = MarkdownSection(name=name, level=level, file=self)
-
-        if level == 1:
-            assert (
-                getattr(self, "current_section", None) is None
-            ), "There should be only one header"
-
-            new_section.parent = None
-
-            self.current_section = new_section
-            self.header = self.current_section
-            self.all_sections[self.current_section.name] = self.current_section
-            return
-
-        if new_section.level > self.current_section.level:
-            assert (
-                self.current_section.level + 1 == new_section.level
-            ), "Incorrect nesting order"
-            new_section.parent = self.current_section
-            self.current_section.children[new_section.name] = new_section
-        else:
-            parent_section = self.current_section
-
-            while parent_section.level + 1 != new_section.level:
-                parent_section = parent_section.parent
-                assert parent_section is not None, "Incorrect nesting order"
-
-            new_section.parent = parent_section
-            parent_section.children[new_section.name] = new_section
-
-        self.current_section = new_section
-        self.all_sections[self.current_section.name] = self.current_section
-
     def _refresh_tree(self) -> None:
 
-        attr = "current_section"
+        current_section: MarkdownSection = None  # type: ignore
+        old_section = self.all_sections
         self.all_sections = {}
-
-        if hasattr(self, attr):
-            delattr(self, attr)
 
         content = ""
         code = False
+
+        def process_section(section_row: str) -> None:
+            nonlocal old_section
+            nonlocal current_section
+
+            level, name = self.level_and_name(section_row)
+
+            if (section := old_section.get(name, None)) is None:
+                new_section = MarkdownSection(name=name, level=level, file=self)
+            else:
+                section.level = level
+                new_section = section
+
+            if level == 1:
+                assert current_section is None, "There should be only one header"
+
+                new_section.parent = None
+
+                current_section = new_section
+                self.header = current_section
+                self.all_sections[current_section.name] = current_section
+                return
+
+            if new_section.level > current_section.level:
+                assert (
+                    current_section.level + 1 == new_section.level
+                ), "Incorrect nesting order"
+                new_section.parent = current_section
+                current_section.children[new_section.name] = new_section
+            else:
+                parent_section = current_section
+
+                while parent_section.level + 1 != new_section.level:
+                    parent_section = parent_section.parent
+                    assert parent_section is not None, "Incorrect nesting order"
+
+                new_section.parent = parent_section
+                parent_section.children[new_section.name] = new_section
+
+            current_section = new_section
+            self.all_sections[current_section.name] = current_section
 
         for row in self.frontmatter.content.splitlines(keepends=True):
             if row.startswith("```"):
                 code = not code
 
             if row.startswith("#") and not code:
-                if getattr(self, attr, None) is not None:
-                    self.current_section.content = content.strip()
+                if current_section is not None:
+                    current_section.content = content.strip()
 
-                self.process_section(row)
+                process_section(row)
                 content = ""
                 continue
 
             content += row
 
         try:
-            self.current_section.content = content.strip()
+            current_section.content = content.strip()
         except:
             self.header = MarkdownSection(name=self.name.title(), level=1, file=self)
             self.save()
