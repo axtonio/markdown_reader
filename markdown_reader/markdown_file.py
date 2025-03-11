@@ -3,6 +3,7 @@ from __future__ import annotations
 __all__ = ["MarkdownSection", "MarkdownFile"]
 
 import re
+import pdfkit
 import pypandoc
 import frontmatter
 from copy import copy
@@ -336,37 +337,55 @@ class MarkdownFile:
 
     def export(
         self,
-        output_file: Path | None = None,
-        to: Literal["pdf"] = "pdf",
-        extra_args: list[str] = [
-            "--pdf-engine=xelatex",
-            "-V",
-            "header-includes=\\usepackage{textcomp}",
-            "-V",
-            "header-includes=\\usepackage{amsmath}",
-            "-V",
-            "header-includes=\\usepackage{babel}",
-            "-V",
-            "mainfont=Arial",
-            "-V",
-            "geometry:margin=2cm",
-            "-V",
-            "colorlinks=true",
-            "-V",
-            "linkcolor=blue",
-            "-V",
-            "urlcolor=blue",
-        ],
-    ) -> Path:
+        html_path: Path | str | None = None,
+        pdf_path: Path | str | None = None,
+        custom_css: str | Path = Path(__file__).parent / "export.css",
+        pdfkit_options: dict[str, str] | None = None,
+    ) -> tuple[Path, Path]:
+        if html_path is None:
+            html_path = (self.markdown_path.parent / f"{self.markdown_path.stem}.html").as_posix()
+        if pdf_path is None:
+            pdf_path = (self.markdown_path.parent / f"{self.markdown_path.stem}.pdf").as_posix()
+        if isinstance(custom_css, Path):
+            custom_css = open(custom_css).read()
 
-        if output_file is None:
-            output_file = self.markdown_path.parent / f"{self.markdown_path.stem}.{to}"
-
-        pypandoc.convert_file(
-            source_file=self.markdown_path.as_posix(),
-            to=to,
-            outputfile=output_file.as_posix(),
-            extra_args=extra_args,
+        html = pypandoc.convert_file(
+            source_file=self.markdown_path,
+            to="html",
+            format="md",
+            extra_args=["-s"],  # -s => standalone
         )
 
-        return output_file
+        # 2) Включаем meta viewport для «резиновой» ширины
+        #    Плюс встраиваем CSS для скроллинга широких таблиц.
+        meta_viewport = (
+            '<meta name="viewport" content="width=device-width, initial-scale=1.0">\n'
+        )
+        meta_viewport += "<style>\n" + custom_css + "\n</style>\n"
+
+        insert_pos = html.find("</head>")
+        if insert_pos == -1:
+            # если по какой-то причине нет </head>, добавим в начало
+            html = meta_viewport + html
+        else:
+            html = html[:insert_pos] + meta_viewport + html[insert_pos:]
+
+        # 3) Сохраняем этот HTML при желании
+        with open(html_path, "w", encoding="utf-8") as f:
+            f.write(html)
+
+        # 4) Генерируем PDF, если нужно
+        if not pdfkit_options:
+            pdfkit_options = {
+                "page-size": "A4",
+                "margin-top": "10mm",
+                "margin-right": "10mm",
+                "margin-bottom": "10mm",
+                "margin-left": "10mm",
+                "encoding": "UTF-8",
+                # Можно включать/выключать smart-shrinking, zoom и т. д.
+            }
+
+        pdfkit.from_file(html_path, pdf_path, options=pdfkit_options)
+
+        return Path(html_path), Path(pdf_path)

@@ -1,0 +1,63 @@
+html,
+body {
+	margin: 0;
+	padding: 0;
+	width: 100% !important;
+	max-width: none !important;
+	font-family: "Helvetica Neue", Arial, sans-serif;
+	font-size: 14px;
+	line-height: 1.5;
+	color: #333;
+}
+
+a,
+a:visited {
+	color: #007BFF;
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+/* Простейший сброс боковых отступов */
+.container,
+.main,
+.markdown-body {
+	width: 100% !important;
+	max-width: none !important;
+	margin: 0;
+	padding: 0;
+}
+
+/* Таблицы на всю ширину */
+table {
+	border-collapse: collapse;
+	width: 100%;
+	max-width: 100%;
+	margin: 1em 0;
+	table-layout: auto;
+	word-wrap: break-word;
+	overflow-wrap: break-word;
+}
+
+thead {
+	display: table-header-group;
+	/* повтор заголовка при переносе на следующую стр. */
+}
+
+tbody tr:nth-child(even) {
+	background-color: #f9f9f9;
+}
+
+th,
+td {
+	border: 1px solid #ccc;
+	padding: 8px 10px;
+	vertical-align: top;
+}
+
+th {
+	background-color: #f0f0f0;
+	font-weight: bold;
+}
