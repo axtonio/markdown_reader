@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "markdown_reader"
+version = "2.0.0"
+authors = [{ name = "Antonio Rodrigues", email = "axtonio.code@gmail.com" }]
+description = "Library to work with markdown"
+readme = "README.md"
+requires-python = ">=3.7"
+
+
+dependencies = [
+	"PyYAML~=6.0.2",
+	"pdfkit~=1.0.0",
+	"pypandoc~=1.15",
+	"python-frontmatter~=1.1.0",
+	"terminal_app @ git+https://github.com/axtonio/terminal_app.git@v1.0.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/axtonio/markdown_reader"
+
+[tool.setuptools]
+package-data = { "markdown_reader" = ["**/*.css"] }
