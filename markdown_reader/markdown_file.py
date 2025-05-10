@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from terminal_app.naming import generate_path
 
 LINK_PATTERN = r"\!\[.*?\]\((.*?)\)"
+DOC_PATTERN = r"(?<!\!)\[([^]]+)\]\(([^)]+)\)"
 
 
 @dataclass
@@ -38,6 +39,19 @@ class MarkdownSection:
                 links.append(url)
 
         return links
+
+    @property
+    def docs(self) -> list[tuple[str, str]]:
+        """
+        Возвращает список кортежей (name, path), где
+        [name](path) не содержит в начале восклицательный знак, чтобы исключить изображения.
+        """
+        doc_links = []
+        for line in self.content.splitlines():
+            matches = re.findall(DOC_PATTERN, line)
+            for link_name, link_path in matches:
+                doc_links.append((link_name.strip(), link_path.strip()))
+        return doc_links
 
     @property
     def text(self) -> str:
@@ -176,6 +190,14 @@ class MarkdownFile:
 
                 if not self.header.content:
                     self.header.content = "***Тут пишите ваш запрос***"
+
+                try:
+                    self.header.add_section(
+                        "Context",
+                        if_exist=if_exist,
+                    )
+                except:
+                    pass
 
                 try:
                     self.header.add_section(
