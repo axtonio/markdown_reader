@@ -293,7 +293,11 @@ class MarkdownFile:
         def make_content(section: MarkdownSection) -> None:
             nonlocal section_content
 
-            section_content += f"{'#' * section.level} {section.name}{("\n\n" + section.content) if section.content else ""}\n\n"
+            section_content += "{} {}{}\n\n".format(
+    "#" * section.level,
+    section.name,
+    "\n\n" + section.content if section.content else ""
+)
 
             for section in section.children.values():
                 make_content(section)
@@ -318,7 +322,9 @@ class MarkdownFile:
             def _add_level(sub_section: MarkdownSection):
                 nonlocal table_of_content
 
-                table_of_content += f"\n{" " * (sub_section.level - 1) * 2}- [{sub_section.name}](#{sub_section.name.lower().replace(" ", "-")})"
+                indent = ' ' * ((sub_section.level - 1) * 2)
+                anchor = sub_section.name.lower().replace(' ', '-')
+                table_of_content += "\n{}- [{}](#{})".format(indent, sub_section.name, anchor)
 
                 for child in sub_section.children.values():
                     _add_level(child)
