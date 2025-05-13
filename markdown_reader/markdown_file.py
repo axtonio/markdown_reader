@@ -201,6 +201,22 @@ class MarkdownFile:
 
                 try:
                     self.header.add_section(
+                        "RAG",
+                        if_exist=if_exist,
+                    )
+                except:
+                    pass
+
+                try:
+                    self.header.add_section(
+                        "CAG",
+                        if_exist=if_exist,
+                    )
+                except:
+                    pass
+
+                try:
+                    self.header.add_section(
                         "System Prompt",
                         content="Отвечай в формате Markdown",
                         if_exist=if_exist,
@@ -316,10 +332,10 @@ class MarkdownFile:
             nonlocal section_content
 
             section_content += "{} {}{}\n\n".format(
-    "#" * section.level,
-    section.name,
-    "\n\n" + section.content if section.content else ""
-)
+                "#" * section.level,
+                section.name,
+                "\n\n" + section.content if section.content else "",
+            )
 
             for section in section.children.values():
                 make_content(section)
@@ -344,9 +360,11 @@ class MarkdownFile:
             def _add_level(sub_section: MarkdownSection):
                 nonlocal table_of_content
 
-                indent = ' ' * ((sub_section.level - 1) * 2)
-                anchor = sub_section.name.lower().replace(' ', '-')
-                table_of_content += "\n{}- [{}](#{})".format(indent, sub_section.name, anchor)
+                indent = " " * ((sub_section.level - 1) * 2)
+                anchor = sub_section.name.lower().replace(" ", "-")
+                table_of_content += "\n{}- [{}](#{})".format(
+                    indent, sub_section.name, anchor
+                )
 
                 for child in sub_section.children.values():
                     _add_level(child)
@@ -371,9 +389,13 @@ class MarkdownFile:
         pdfkit_options: dict[str, str] | None = None,
     ) -> tuple[Path, Path]:
         if html_path is None:
-            html_path = (self.markdown_path.parent / f"{self.markdown_path.stem}.html").as_posix()
+            html_path = (
+                self.markdown_path.parent / f"{self.markdown_path.stem}.html"
+            ).as_posix()
         if pdf_path is None:
-            pdf_path = (self.markdown_path.parent / f"{self.markdown_path.stem}.pdf").as_posix()
+            pdf_path = (
+                self.markdown_path.parent / f"{self.markdown_path.stem}.pdf"
+            ).as_posix()
         if isinstance(custom_css, Path):
             custom_css = open(custom_css).read()
 
