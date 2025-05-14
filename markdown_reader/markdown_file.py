@@ -490,23 +490,29 @@ class MarkdownFile:
         return Path(html_path), Path(pdf_path)
 
     @staticmethod
-    def read_directory(directory: str | Path) -> MarkdownFile:
+    def read_directory(
+        directory: str | Path,
+        exclude: list[str] | None = None,
+        include: list[str] | None = None,
+    ) -> MarkdownFile:
         """
         Считывает файловую структуру из указанной директории и формирует MarkdownFile
-        с иерархией, но теперь по алгоритму BFS (ширина).
+        с иерархией, используя BFS.
 
-        # <Имя_директории>
-
-        ## <Имя_поддиректории>
-        ### <Имя_файла_или_поддиректории>
-        (содержимое файла)
-
-        ...
+        Args:
+            directory: Путь к директории.
+            exclude: Список шаблонов путей для исключения.
+            include: Список шаблонов путей для включения.
         """
 
         directory = Path(directory)
         if not directory.is_dir():
             raise ValueError(f"Указанный путь {directory} не является директорией.")
+
+        if exclude is None:
+            exclude = []
+        if include is None:
+            include = []
 
         # Полное сопоставление расширений для подсветки
         suffix_mapping = {
@@ -555,17 +561,24 @@ class MarkdownFile:
         md_file.update()
         md_file.header.meta["path"] = "./" + directory.name
 
-        # Подготовка очереди для BFS
         queue = deque([(md_file.header, directory)])
 
         while queue:
             parent_section, current_path = queue.popleft()
 
-            # Сортируем: сначала директории, потом файлы
             for item in sorted(
                 current_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
             ):
-                rel_path = "./" + item.relative_to(directory.parent).as_posix()
+
+                # Применяем фильтры exclude и include
+                if any(item.match(pattern) for pattern in exclude):
+                    continue
+                if include and not any(item.match(pattern) for pattern in include):
+                    continue
+
+                rel_path = (
+                    "./" + item.relative_to(directory.parent).as_posix()
+                )  # Пересчитываем после фильтров
                 if item.is_dir():
                     name = item.name
                     parent = item
@@ -581,12 +594,10 @@ class MarkdownFile:
                             parent = parent.parent
 
                     assert new_section is not None
-
                     queue.append((new_section, item))
                 else:
                     try:
                         with open(item, "r", encoding="utf-8") as f:
-                            # Определяем язык для подсветки кода
                             file_suffix = suffix_mapping.get(item.suffix, "")
                             file_content = f.read()
                             content = f"```{file_suffix}\n{file_content}\n```"
