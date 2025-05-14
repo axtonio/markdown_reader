@@ -12,7 +12,7 @@ from frontmatter import Post
 from collections import deque
 from functools import cached_property
 from dataclasses import dataclass, field
-from typing import Literal, overload, Any
+from typing import Literal, overload, Any, Sequence
 from terminal_app.naming import generate_path
 
 LINK_PATTERN = r"\!\[.*?\]\((.*?)\)"
@@ -493,7 +493,7 @@ class MarkdownFile:
     def read_directory(
         directory: str | Path,
         exclude: list[str] | None = None,
-        include: list[str] | None = None,
+        include: Sequence[str | Path] | None = None,
     ) -> MarkdownFile:
         """
         Считывает файловую структуру из указанной директории и формирует MarkdownFile
@@ -573,7 +573,25 @@ class MarkdownFile:
                 # Применяем фильтры exclude и include
                 if any(item.match(pattern) for pattern in exclude):
                     continue
-                if include and not any(item.match(pattern) for pattern in include):
+
+                def extract_base_path(path_pattern):
+
+                    path_obj = Path(path_pattern)
+                    parts = list(path_obj.parts)
+                    if "**" in parts:
+                        index = parts.index("**")
+                        base_parts = parts[:index]
+                        return Path(*base_parts)
+
+                if include and not (
+                    any(
+                        item.match(pattern)
+                        for pattern in include
+                        if isinstance(pattern, str)
+                    )
+                    or item
+                    in [pattern for pattern in include if isinstance(pattern, Path)]
+                ):
                     continue
 
                 rel_path = (
