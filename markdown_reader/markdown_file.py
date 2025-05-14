@@ -9,9 +9,10 @@ import frontmatter
 from copy import copy
 from pathlib import Path
 from frontmatter import Post
-from typing import Literal, overload
+from collections import deque
 from functools import cached_property
 from dataclasses import dataclass, field
+from typing import Literal, overload, Any
 from terminal_app.naming import generate_path
 
 LINK_PATTERN = r"\!\[.*?\]\((.*?)\)"
@@ -26,6 +27,7 @@ class MarkdownSection:
     parent: MarkdownSection | None = field(init=False)
     content: str = ""
     children: dict[str, MarkdownSection] = field(default_factory=dict)
+    meta: dict[str, Any] = field(default_factory=dict)
 
     @property
     def images(self) -> list[str]:
@@ -41,7 +43,7 @@ class MarkdownSection:
         return links
 
     @property
-    def docs(self) -> list[tuple[str, str]]:
+    def docs(self) -> list[tuple[str, Path]]:
         """
         Возвращает список кортежей (name, path), где
         [name](path) не содержит в начале восклицательный знак, чтобы исключить изображения.
@@ -50,7 +52,42 @@ class MarkdownSection:
         for line in self.content.splitlines():
             matches = re.findall(DOC_PATTERN, line)
             for link_name, link_path in matches:
+                link_path = Path(link_path.strip())
+                if not link_path.exists():
+                    continue
+
+                doc_links.append((link_name.strip(), link_path))
+        return doc_links
+
+    @property
+    def urls(self) -> list[tuple[str, str]]:
+        """
+        Возвращает список кортежей (name, links), где
+        [name](path) не содержит в начале восклицательный знак, чтобы исключить изображения.
+        """
+        doc_links = []
+        for line in self.content.splitlines():
+            matches = re.findall(DOC_PATTERN, line)
+            for link_name, link_path in matches:
+                if Path(link_path.strip()).exists():
+                    continue
                 doc_links.append((link_name.strip(), link_path.strip()))
+        return doc_links
+
+    @property
+    def resources(self) -> list[tuple[str, str | Path]]:
+        """
+        Возвращает список кортежей (name, links), где
+        [name](path) не содержит в начале восклицательный знак, чтобы исключить изображения.
+        """
+        doc_links = []
+        for line in self.content.splitlines():
+            matches = re.findall(DOC_PATTERN, line)
+            for link_name, link_path in matches:
+                link_path = link_path.strip()
+                if Path(link_path).exists():
+                    link_path = Path(link_path)
+                doc_links.append((link_name.strip(), link_path))
         return doc_links
 
     @property
@@ -58,9 +95,11 @@ class MarkdownSection:
 
         lines = []
         for line in self.content.splitlines():
-            match = re.search(LINK_PATTERN, line)
-            if not match:
-                lines.append(line)
+            # match1 = re.search(LINK_PATTERN, line)
+            # match2 = re.search(DOC_PATTERN, line)
+
+            # if not (match1 or match2):
+            lines.append(line)
 
         return "\n".join(lines).strip("\n").strip()
 
@@ -74,6 +113,7 @@ class MarkdownSection:
         self,
         name: str,
         content: str = "",
+        meta: dict[str, Any] = {},
         if_exist: Literal["replace", "error", "change_content"] = "change_content",
         remove_subsections: bool = True,
     ) -> MarkdownSection:
@@ -95,6 +135,7 @@ class MarkdownSection:
         if name in self.children.keys() and if_exist == "change_content":
             section = self.children[name]
             section.content = content
+            section.meta.update(meta)
 
         else:
 
@@ -106,7 +147,11 @@ class MarkdownSection:
                 )
 
             section = MarkdownSection(
-                name=name, level=self.level + 1, file=self.file, content=content
+                name=name,
+                level=self.level + 1,
+                file=self.file,
+                content=content,
+                meta=meta,
             )
 
             section.parent = self
@@ -352,7 +397,12 @@ class MarkdownFile:
         self.frontmatter = self._refresh_formatter()
         self._refresh_tree()
 
-    def save(self, add_table_of_content: bool = False) -> None:
+    def save(
+        self,
+        add_table_of_content: bool = False,
+        func_table_of_content=lambda sub_section: "#"
+        + sub_section.name.lower().replace(" ", "-"),
+    ) -> None:
         if add_table_of_content:
             self.delete_section(self.table_of_content)
             table_of_content = ""
@@ -361,9 +411,8 @@ class MarkdownFile:
                 nonlocal table_of_content
 
                 indent = " " * ((sub_section.level - 1) * 2)
-                anchor = sub_section.name.lower().replace(" ", "-")
-                table_of_content += "\n{}- [{}](#{})".format(
-                    indent, sub_section.name, anchor
+                table_of_content += "\n{}- [{}]({})".format(
+                    indent, sub_section.name, func_table_of_content(sub_section)
                 )
 
                 for child in sub_section.children.values():
@@ -439,3 +488,129 @@ class MarkdownFile:
         pdfkit.from_file(html_path, pdf_path, options=pdfkit_options)
 
         return Path(html_path), Path(pdf_path)
+
+    @staticmethod
+    def read_directory(directory: str | Path) -> MarkdownFile:
+        """
+        Считывает файловую структуру из указанной директории и формирует MarkdownFile
+        с иерархией, но теперь по алгоритму BFS (ширина).
+
+        # <Имя_директории>
+
+        ## <Имя_поддиректории>
+        ### <Имя_файла_или_поддиректории>
+        (содержимое файла)
+
+        ...
+        """
+
+        directory = Path(directory)
+        if not directory.is_dir():
+            raise ValueError(f"Указанный путь {directory} не является директорией.")
+
+        # Полное сопоставление расширений для подсветки
+        suffix_mapping = {
+            ".py": "python",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".json": "json",
+            ".yml": "yaml",
+            ".yaml": "yaml",
+            ".ini": "ini",
+            ".sql": "sql",
+            ".html": "html",
+            ".htm": "html",
+            ".css": "css",
+            ".scss": "scss",
+            ".sass": "sass",
+            ".md": "markdown",
+            ".markdown": "markdown",
+            ".txt": "text",
+            ".sh": "bash",
+            ".bat": "batch",
+            ".ps1": "powershell",
+            ".php": "php",
+            ".java": "java",
+            ".c": "c",
+            ".cpp": "cpp",
+            ".h": "c",
+            ".hpp": "cpp",
+            ".swift": "swift",
+            ".dart": "dart",
+            ".go": "go",
+            ".rb": "ruby",
+            ".pl": "perl",
+            ".lua": "lua",
+            ".r": "r",
+            ".toml": "toml",
+            ".graphql": "graphql",
+            ".gql": "graphql",
+        }
+
+        md_file_path = f"{directory.name}_structure.md"
+        md_file = MarkdownFile(
+            md_file_path, table_of_content_name="Directory Structure", mode="w"
+        )
+        md_file.header.name = directory.name
+        md_file.update()
+        md_file.header.meta["path"] = "./" + directory.name
+
+        # Подготовка очереди для BFS
+        queue = deque([(md_file.header, directory)])
+
+        while queue:
+            parent_section, current_path = queue.popleft()
+
+            # Сортируем: сначала директории, потом файлы
+            for item in sorted(
+                current_path.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+            ):
+                rel_path = "./" + item.relative_to(directory.parent).as_posix()
+                if item.is_dir():
+                    name = item.name
+                    parent = item
+                    new_section = None
+                    while parent != parent.parent:
+                        try:
+                            new_section = parent_section.add_section(
+                                name, meta=dict(path=rel_path)
+                            )
+                            break
+                        except:
+                            name = f"{parent.parent.name}|{name}"
+                            parent = parent.parent
+
+                    assert new_section is not None
+
+                    queue.append((new_section, item))
+                else:
+                    try:
+                        with open(item, "r", encoding="utf-8") as f:
+                            # Определяем язык для подсветки кода
+                            file_suffix = suffix_mapping.get(item.suffix, "")
+                            file_content = f.read()
+                            content = f"```{file_suffix}\n{file_content}\n```"
+                    except Exception as e:
+                        content = f"Не удалось прочитать файл: {e}"
+                        if item.suffix in [".png", ".jpeg"]:
+                            content = f"![{item.stem}]({rel_path})"
+                        if item.suffix in [".pdf"]:
+                            content = f"[{item.stem}]({rel_path})"
+
+                    name = item.name
+                    parent = item
+                    new_section = None
+                    while parent != parent.parent:
+                        try:
+                            new_section = parent_section.add_section(
+                                name, content=content, meta=dict(path=rel_path)
+                            )
+                            break
+                        except:
+                            name = f"{parent.parent.name}|{name}"
+                            parent = parent.parent
+
+                    assert new_section is not None
+
+        md_file.save(True, lambda sub_section: sub_section.meta["path"])
+        return md_file
