@@ -574,15 +574,6 @@ class MarkdownFile:
                 if any(item.match(pattern) for pattern in exclude):
                     continue
 
-                def extract_base_path(path_pattern):
-
-                    path_obj = Path(path_pattern)
-                    parts = list(path_obj.parts)
-                    if "**" in parts:
-                        index = parts.index("**")
-                        base_parts = parts[:index]
-                        return Path(*base_parts)
-
                 if include and not (
                     any(
                         item.match(pattern)
