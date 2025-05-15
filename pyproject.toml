@@ -10,10 +10,10 @@ readme = "README.md"
 requires-python = ">=3.7"
 dynamic = ["version"]
 dependencies = [
-	"PyYAML~=6.0.2",
-	"pdfkit~=1.0.0",
-	"pypandoc~=1.15",
-	"python-frontmatter~=1.1.0",
+	"PyYAML",
+	"pdfkit",
+	"pypandoc",
+	"python-frontmatter",
 	"terminal_app @ git+https://github.com/axtonio/terminal_app.git@v1.0.3",
 ]
 
